@@ -15,10 +15,12 @@ The list can include one or more of:
   :INTERRUPT
 ")
 
-(defun numpy-installed-p ()
-  (handler-case (progn
-                  (pyexec "import numpy")
-                  t)
+(defun numpy-installed-p (&optional (python *python*))
+  (handler-case
+      (let ((*python* python))
+	(declare (special *python*)) ;; compilation order, may not be known
+        (pyexec "import numpy")
+        t)
     (pyerror (condition)
       (declare (ignore condition))
       nil)))
