@@ -41,7 +41,7 @@
 
 (defmacro cp-debug-print (&rest rest)
   (declare (ignorable rest))
-  #+debug(format *standard-output* ,@rest))
+  #+debug`(format *standard-output* ,@rest))
 
 (defun dispatch-messages (output-stream input-stream)
   "Read response from python, loop to handle any callbacks.  Returns
@@ -149,8 +149,10 @@
   `(labels ((body () ,@body))
      (if *holding-interaction-lock-already*
          (body)
-         (bt:with-recursive-lock-held ((python-raw-py-lock ,python))
-           (body)))))
+         (progn
+           (cp-debug-print "RP: Grabbing raw-py lock~%")
+           (bt:with-recursive-lock-held ((python-raw-py-lock ,python))
+             (body))))))
 
 ;; ============================== RAW FUNCTIONS ================================
 (defun raw-py (cmd-char &rest strings)
@@ -163,10 +165,9 @@ Passes strings as they are, without any 'pythonize'ation."
 	         (stream (python-input python))
 	         (str (apply #'concatenate 'string strings))
 	         (lock (python-interaction-lock python)))
-            (cp-debug-print "RP: Grabbing raw-py lock ~A~%" lock)
             (with-raw-py-lock python
               (cp-debug-print "RP: ~A ~A -> PYTHON~%" cmd-char strings)
-              (cp-debug-print "RP: Grabbing interaction lock ~A~%" lock)
+              (cp-debug-print "RP: Grabbing interaction lock~%")
               (bt:with-recursive-lock-held (lock) ; wait for previous processing to be done
 	        (unless (null (python-interaction-results python))
 		  (format *standard-output* "Unexpected results from python process ~A~%" (python-interaction-results python))

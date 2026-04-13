@@ -70,26 +70,28 @@
 
 (defmacro pp-debug-print (&rest rest)
   (declare (ignorable rest))
-  #+debug (format *standard-output* ,@rest))
+  #+debug `(format *standard-output* ,@rest))
 
 (defun get-results& (python)
   "Block until some results from python.  But cannot block if the
  interaction thread is calling us."
   (declare (optimize speed safety))
   (let ((lock (python-interaction-lock python)))
-    (pp-debug-print "GR: Grabbing interaction lock ~A~%" lock)
+    (pp-debug-print "GR: Grabbing interaction lock~%")
     (bt:with-recursive-lock-held (lock)
-      (pp-debug-print "GR: Got interaction lock ~A~%" lock)
+      (pp-debug-print "GR: Got interaction lock~%")
       (loop
 	for is-result = (python-interaction-results python)
 	for result = (pop (python-interaction-results python))
 	until is-result ;; result may be nil!
 	do
-	   (pp-debug-print "GR: Sleeping on interaction lock~%")
+	   (pp-debug-print "GR: Sleeping on interaction wait-queue~%")
            ;; Here we have a race, because we want to give control
            ;; back to the interaction thread, but someone else may
            ;; be in raw-py waiting to grab the interaction lock and
-           ;; if they get it, they will get our results
+           ;; if they get it, they will get our results.  But this is
+           ;; protected by the raw-py lock --- only one person is
+           ;; holding the raw-py lock
 	   (bt:condition-wait (python-interaction-wait python) lock)
 	finally
 	   (pp-debug-print "GR: Got result ~S~%" result)
@@ -116,8 +118,8 @@
 will be executed by PYSTART. The code should not contain single-quotation marks.")
 
 (define-condition python-process-startup-error (error)
-  ((command :initarg :command :reader command)
-   (error-string :initarg :error :reader error-string))
+  ((command :initarg :command :initform "" :reader command)
+   (error-string :initarg :error :initform "" :reader error-string))
   (:report (lambda (condition stream)
              (format stream "Unable to start python process \"~a\"~%~% Error: ~%~%~a"
                      (command condition)
@@ -193,7 +195,9 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
  *lispifiers* and *pythonizers*."
   (let ((*get-results*
 	  (lambda (python)
-	    (dispatch-messages (python-output python) (python-input python)))))
+	    (dispatch-messages (python-output python) (python-input python))))
+        (*print-python-object* nil)) ;; avoid deadlocks
+    (declare (special *get-results*) (special *print-python-object*))
     (loop
       until (or (python-thread-end-signal python) (not (python-alive-p python)))
       with output-stream = (python-output python)
@@ -209,6 +213,8 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
                  (let ((*holding-interaction-lock-already* t)
                        (*lispifiers* (python-lispifiers python))
                        (*pythonizers* (python-pythonizers python)))
+                   (declare (special *holding-interaction-lock-already* *lispifiers*
+                                     *pythonizers*))
 		   (multiple-value-bind (result result-occurred)
 		       (dispatch-messages output-stream input-stream)
 		     (pp-debug-print "IT: result-occurred ~A~%" result-occurred)
@@ -385,6 +391,7 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
   (setf (python-interaction-results python) nil)
   (setf (python-output-lock python) (bt:make-recursive-lock))
   (setf (python-interaction-lock python) (bt:make-recursive-lock))
+  (setf (python-raw-py-lock python) (bt:make-recursive-lock))
   (setf (python-interaction-wait python) (bt:make-condition-variable :name "stdin stream waitqueue"))
   (setf (python-subprocess python) nil))
 
