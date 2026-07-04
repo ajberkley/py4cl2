@@ -399,7 +399,7 @@ def send_value(cmd_type, value, response_id=None):
 	"""
 	with send_value_lock:
 		return_stream.write(cmd_type)
-		if response_id:
+		if response_id is not None:
 			print(response_id, file = return_stream)
 		try:
 			# if type(value) == str and return_values > 0:
