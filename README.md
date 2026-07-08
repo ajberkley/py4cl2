@@ -1,4 +1,4 @@
->This is a fork of [digikar99/py4cl2](https://github.com/digikar99/py4cl2)
+>This is a fork of bendudson/py4cl.
 
 # Github Pages
 
@@ -71,7 +71,6 @@ The example above with matplotlib was a static plot (no interactive zooming, no 
   (raw-py-exec/no-return "import PyQt6_example; PyQt6_example.start_app(try_process_message);")
   (pyeval "1 + 1") ;; still works despite GUI refreshing as needed
 ```
-See [cl-matplotlib](https://github.com/ajberkley/cl-matplotlib) for an example that uses this version of py4cl2 to have a nice interactive plotting gui running in tandem with our Common Lisp REPL.
 
 # Multiple Python processes
 

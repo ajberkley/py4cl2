@@ -283,8 +283,13 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
                    (enqueue (python-read-queue python) raw-response)
                    (sleep 0.001))))))))
 
+(defvar *notify-user* (lambda (&rest rest)
+                        (apply 'format *standard-output* rest)))
+
 (defun notify-user (format-string &rest format-args)
-  (apply 'format *standard-output* format-string format-args))
+  "Because some of these calls come from threads, you might want to plug this into
+ a logging infrastructure since they won't show up in the slime REPL by default."
+  (apply *notify-user* format-string format-args))
 
 (defun read-loop (python)
   "Read messages from python, push them to read-queue"
@@ -379,7 +384,7 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
 	(setf (python-read-thread python)
 	      (bt:make-thread
 	       (lambda () (read-loop python))
-	       :name "reader-thread"))
+	       :name "python reader-thread"))
         (setf (python-async-callback-thread python)
 	      (bt:make-thread
 	       (lambda () (async-callback-loop python))
@@ -387,7 +392,6 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
 	(setf (python-output-thread python)
               (bt:make-thread
                (lambda ()
-		 (handler-case
                      (loop
 		       with output-lock = (python-output-lock python)
 		       with py-out = (python-error-output python)
@@ -395,32 +399,35 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
 		       with last-notified-of-spurious-output = (get-universal-time)
 		       ;; Someone may be waiting to grab with-python-output
 		       do ;; ideally we would not block, but we do
-			  (let ((char (read-char py-out)))
-			    (when char
-			      (if (python-in-with-python-output python)
-				  (progn
-				    (bt:with-lock-held (output-lock)
-				      (assert (< (length (python-output-result python)) 10000000))
-				      (vector-push-extend char (python-output-result python))))
-				  (progn
-				    (when (> (- (get-universal-time) last-notified-of-spurious-output) 1)
-				      (notify-user "Spurious output from python #~A:~%" (python-id python))
-				      (setf last-notified-of-spurious-output (get-universal-time)))
-                                    (vector-push-extend char *spurious-info*)
-				    (write-char char))))))
-                   (simple-error (condition)
-		     (cerror "ACCEPT" "~S~%  ~A~%occured while inside python-output-thread" condition condition))
-		   (end-of-file (condition)
-		     ;; User will get a debugger from the interaction thread, better to only have one
-		     ;; Messages will probably be garbled as we write from two threads, but better than nothing
-		     (notify-user
-			     "Python #~A: EOF on STDERR ~A received ~@[last message was ~A~]~%"
-			     (python-id python)
-			     condition (unless (emptyp (python-output-result python))
-					 (python-output-result python))))
-                   (stream-error (condition)
-                     (unless (member :abcl *features*)
-                       (cerror "ACCEPT" "~S~%  ~A~%occured while inside python-output-thread" condition condition)))))
+		          (handler-case
+			      (let ((char (read-char py-out)))
+			        (when char
+			          (if (python-in-with-python-output python)
+				      (progn
+				        (bt:with-lock-held (output-lock)
+				          (assert (< (length (python-output-result python)) 10000000))
+				          (vector-push-extend char (python-output-result python))))
+				      (progn
+                                        (vector-push-extend char *spurious-info*)
+				        (when (> (- (get-universal-time) last-notified-of-spurious-output) 1)
+				          (notify-user "Spurious output from python #~A:~A~%"
+                                                       (python-id python)
+                                                       (format nil "~A" *spurious-info*))
+                                          (setf (fill-pointer *spurious-info*) 0)
+				          (setf last-notified-of-spurious-output (get-universal-time)))))))
+                          (simple-error (condition)
+		                        (cerror "ACCEPT" "~S~%  ~A~%occured while inside python-output-thread" condition condition))
+		          (end-of-file (condition)
+		                       ;; User will get a debugger from the interaction thread, better to only have one
+		                       ;; Messages will probably be garbled as we write from two threads, but better than nothing
+		                       (notify-user
+			                "Python #~A: EOF on STDERR ~A received ~@[last message was ~A~]~%"
+			                (python-id python)
+			                condition (unless (emptyp (python-output-result python))
+					            (python-output-result python))))
+                          (stream-error (condition)
+                                        (unless (member :abcl *features*)
+                                          (cerror "ACCEPT" "~S~%  ~A~%occured while inside python-output-thread" condition condition))))))
 	       :name "stderr thread")))
       (assert (python-alive-p python))
       (setf (python-numpy-installed python) (numpy-installed-p python))

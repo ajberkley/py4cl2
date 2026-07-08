@@ -67,4 +67,5 @@
   (:export
    #:*internal-features*
    #:*warn-on-unavailable-feature-usage*
-   #:raw-py-exec/no-return))
+   #:raw-py-exec/no-return
+   #:*notify-user*))
