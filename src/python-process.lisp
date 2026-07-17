@@ -323,7 +323,7 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
     until (or (python-thread-end-signal python) (not (python-alive-p python)))
     do
        (let ((p (peek (python-read-queue python))))
-         (when (and p (member (python-message-cmd-char p) '(#\c #\d)))
+         (when (and p (not (python-error-p p)) (member (python-message-cmd-char p) '(#\c #\d)))
            (bt:with-recursive-lock-held ((python-interaction-lock python))
              ;;(notify-user "async callback processing ~A" p)
              (let ((raw-response (read-from-python-queue python)))
