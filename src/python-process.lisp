@@ -293,25 +293,29 @@ will be executed by PYSTART. The code should not contain single-quotation marks.
 
 (defun read-loop (python)
   "Read messages from python, push them to read-queue"
-  (loop
-    with stream = (python-output python)
-    with queue = (python-read-queue python)
-    until (or (python-thread-end-signal python) (not (python-alive-p python)))
-    :for message-char := (read-char stream)
-    :do
-       (case message-char
-         ((#\e #\r)
-          (let ((response-id (parse-integer (read-line stream))))
-            (let ((msg (make-python-message :cmd-char message-char :string (stream-read-string stream)
-                                           :response-id response-id)))
-              ;;(notify-user "Got ~A" msg)
-              (enqueue queue msg))))
-         ((#\d #\s #\S #\c #\p)
-          (let ((msg (make-python-message :cmd-char message-char :string (stream-read-string stream))))
-            ;;(notify-user "Got ~A" msg)
-            (enqueue queue msg)))
-         (otherwise
-          (enqueue queue (make-python-error :thunk (lambda () (error "Unhandled message type '~d'" message-char))))))))
+  (handler-case
+      (loop
+        with stream = (python-output python)
+        with queue = (python-read-queue python)
+        until (or (python-thread-end-signal python) (not (python-alive-p python)))
+        :for message-char := (read-char stream :eof-error-p t)
+        :do
+           (case message-char
+             ((#\e #\r)
+              (let ((response-id (parse-integer (read-line stream))))
+                (let ((msg (make-python-message :cmd-char message-char :string (stream-read-string stream)
+                                                :response-id response-id)))
+                  ;;(notify-user "Got ~A" msg)
+                  (enqueue queue msg))))
+             ((#\d #\s #\S #\c #\p)
+              (let ((msg (make-python-message :cmd-char message-char :string (stream-read-string stream))))
+                ;;(notify-user "Got ~A" msg)
+                (enqueue queue msg)))
+             (otherwise
+              (enqueue queue (make-python-error :thunk (lambda () (error "Unhandled message type '~d'" message-char)))))))
+    (end-of-file ()
+      (notify-user "EOF reading from python")
+      (enqueue (python-read-queue python) (make-python-error :thunk (lambda () (error 'python-eof-and-dead :python-process python)))))))
 
 (defun async-callback-loop (python)
   "Our job is to wait and see if there are answers"
