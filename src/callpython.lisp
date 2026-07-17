@@ -337,7 +337,8 @@ Note: FUN-NAME is NOT PYTHONIZEd if it is a string.
  This is useful if performing operations on large datasets."
   `(progn
      (python-start-if-not-alive)
-     (let ((stream (python-input *python*)))
+     (let* ((python *python*)
+            (stream (python-input python)))
        (bt:with-recursive-lock-held ((python-interaction-lock python))
          (write-char #\O stream)        ;; Turn on remote objects
          (force-output stream))
